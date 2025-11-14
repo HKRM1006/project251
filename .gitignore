@@ -11,8 +11,11 @@ venv/
 # Dataset and model files
 *.pt
 *.pth
+*.onnx
 *.pkl
-
+*.dat
+*.mov
+*.mp4
 # VS Code settings (optional)
 .vscode/
 

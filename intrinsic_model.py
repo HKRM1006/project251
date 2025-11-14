@@ -154,30 +154,31 @@ def test(model, val_loader, device):
             total_samples += vx.size(0)
     print(f"efx: {total_fx_err / total_samples:.6f}   efy: {total_fy_err / total_samples:.6f}")
 
-def main():
-    #init_model("testModel")
-    device = torch.device("cpu")
-    model = PointNet()
-    state = torch.load("Models/testModel.pth", map_location=device)
-    model.load_state_dict(state)
-    
-    
-    # x, y = data.load_dataset_pt("dataset/synthetic_face_dataset.pt")
-    # x_train, y_train, x_val, y_val = data.split_dataset(x, y, val_ratio=0.1)
-    # train_loader, val_loader = data.build_dataloaders(
-    #     x_train, y_train, x_val, y_val,
-    #     batch_size = 32
-    # )
-    # criterion = intrinsic_loss
-    # optimizer = torch.optim.AdamW(model.parameters(), lr = 1e-4, weight_decay=1e-5)
-    # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
-    # fit(model, train_loader, criterion, optimizer, device, 30, val_loader, scheduler)
-    # torch.save(model.state_dict(), "Models/testModel.pth")
 
-
-    x, y = data.load_dataset_pt("dataset/synthetic_face_dataset_test.pt")
-    test_dataset = TensorDataset(x, y)
-    test_loader = DataLoader(test_dataset, batch_size=16, shuffle=False)
-    test(model, test_loader, device)
 if __name__ == "__main__":
+    def main():
+        #init_model("testModel")
+        device = torch.device("cpu")
+        model = PointNet()
+        state = torch.load("Models/testModel.pth", map_location=device)
+        model.load_state_dict(state)
+        
+        
+        # x, y = data.load_dataset_pt("dataset/synthetic_face_dataset.pt")
+        # x_train, y_train, x_val, y_val = data.split_dataset(x, y, val_ratio=0.1)
+        # train_loader, val_loader = data.build_dataloaders(
+        #     x_train, y_train, x_val, y_val,
+        #     batch_size = 32
+        # )
+        # criterion = intrinsic_loss
+        # optimizer = torch.optim.AdamW(model.parameters(), lr = 1e-4, weight_decay=1e-5)
+        # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
+        # fit(model, train_loader, criterion, optimizer, device, 30, val_loader, scheduler)
+        # torch.save(model.state_dict(), "Models/testModel.pth")
+
+
+        x, y = data.load_dataset_pt("dataset/synthetic_face_dataset_test.pt")
+        test_dataset = TensorDataset(x, y)
+        test_loader = DataLoader(test_dataset, batch_size=16, shuffle=False)
+        test(model, test_loader, device)
     main()

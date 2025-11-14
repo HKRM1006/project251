@@ -145,14 +145,22 @@ def sph_to_cart(az_deg, el_deg, dist):
 
 
 def sample_intrinsics(W, H):
-    f = np.random.uniform(500, 1400)
-    cx = np.random.normal(W/2, 10)
-    cy = np.random.normal(H/2, 10)
+    fx_norm = np.random.uniform(0.35, 1.2)
+    fy_norm = fx_norm + np.random.uniform(-0.05, 0.05)
+
+    cx_norm = np.random.normal(0.5, 0.02)
+    cy_norm = np.random.normal(0.5, 0.02)
+
+    fx = fx_norm * W
+    fy = fy_norm * H
+    cx = cx_norm * W
+    cy = cy_norm * H
+
     return np.array([
-        [f, 0, cx],
-        [0, f, cy],
-        [0, 0, 1]
-    ], np.float32)
+        [fx, 0,  cx],
+        [0,  fy, cy],
+        [0,   0,  1]
+    ], dtype=np.float32)
 
 
 def look_at_Rt_target(C, T, up=np.array([0,1,0], np.float32)):
@@ -185,7 +193,7 @@ def project_onecam_video(
     all_uv = []
     for f in range(F):
         # Look-at to get camera axes in world coords
-        R, t = _look_at_Rt_target(C, T)
+        R, t = look_at_Rt_target(C, T)
         if roll_per_frame_deg != 0.0:
             R = Rz(f * roll_per_frame_deg) @ R
 
@@ -215,16 +223,16 @@ def project_onecam_video(
     return torch.from_numpy(np.stack(all_uv, 0)).to(device), K
 if __name__ == "__main__":
     x, y = [], []
-    ws, hs = [], []       # save resolution per sample
+    ws, hs = [], []
 
     resolutions = [
-        (1280, 960),
-        (1920, 1080),
-        (2560, 1440),
+        # (1280, 960),
+        # (1920, 1080),
+        # (2560, 1440),
         (3840, 2160)
     ]
 
-    NUM_SAMPLES = 50
+    NUM_SAMPLES = 1
     FRAMES_PER_SAMPLE = 120
 
     for (W, H) in resolutions:
