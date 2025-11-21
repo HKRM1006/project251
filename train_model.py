@@ -1,7 +1,7 @@
 import torch, torch.nn as nn
 import torch.nn.functional as F
 import os
-import process_data as data
+import data_loader as data
 from torch.utils.data import DataLoader, TensorDataset
 
 class PointNet(nn.Module):
