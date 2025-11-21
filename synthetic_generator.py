@@ -1,11 +1,8 @@
 import os, pickle, numpy as np, torch
 from smplx import FLAME
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 import math
-from typing import Tuple, List
 device = "cuda" if torch.cuda.is_available() else "cpu"
-MODEL_DIR = r"D:/Calibration/Models"
+MODEL_DIR = r"Models"
 STATIC_EMB = os.path.join(MODEL_DIR, "flame_static_embedding.pkl")
 
 flame = FLAME(model_path=MODEL_DIR, use_face_contour=False).to(device)
@@ -65,15 +62,17 @@ class OU:
 
 def generate_landmark_3d_sequence(
     num_frames: int,
-    betas_scale: float = 2.0,
-    expr_base_scale: float = 0.15,
-    expr_jitter: float = 0.04,
-    expr_smooth: float = 0.98,
-    expr_cap_norm: float | None = 0.6,  
-    jaw_max_deg: float = 12.0,          
-    head_max_yaw: float = 15.0,
-    head_max_pitch: float = 8.0,
-    head_max_roll: float = 6.0,
+    betas_scale: float = 3.0,
+    expr_base_scale: float = 0.18,
+    expr_jitter: float = 0.03,
+    expr_smooth: float = 0.90,
+    expr_cap_norm: float | None = 0.2,  
+    jaw_max_deg: float = 10.0,          
+    head_max_yaw: float = 30.0,
+    head_max_pitch: float = 25.0,
+    head_max_roll: float = 25.0,
+    trans_xy_max: float = 0.12,
+    trans_z_max: float = 0.18,    
     fps: float = 30.0
 ) -> np.ndarray:
     dt = 1.0 / max(1.0, fps)
@@ -81,13 +80,21 @@ def generate_landmark_3d_sequence(
 
     # mild OU drivers for head/jaw
     ou_jaw   = OU(mu=0.0, theta=1.8, sigma=30.0, dt=dt, x0=0.0, clamp=(-jaw_max_deg, jaw_max_deg))
-    ou_yaw   = OU(mu=0.0, theta=1.2, sigma=20.0, dt=dt, x0=0.0, clamp=(-head_max_yaw, head_max_yaw))
+    ou_yaw   = OU(mu=0.0, theta=3.0, sigma=8.0,  dt=dt, x0=0.0, clamp=(-head_max_yaw, head_max_yaw))
     ou_pitch = OU(mu=0.0, theta=1.2, sigma=15.0, dt=dt, x0=0.0, clamp=(-head_max_pitch, head_max_pitch))
     ou_roll  = OU(mu=0.0, theta=1.2, sigma=12.0, dt=dt, x0=0.0, clamp=(-head_max_roll, head_max_roll))
+    ou_tx = OU(mu=0.0, theta=1.8, sigma=0.20, dt=dt,
+               x0=0.0, clamp=(-trans_xy_max, trans_xy_max))
+    ou_ty = OU(mu=0.0, theta=1.8, sigma=0.20, dt=dt,
+               x0=0.0, clamp=(-trans_xy_max, trans_xy_max))
+    ou_tz = OU(mu=0.0, theta=1.8, sigma=0.18, dt=dt,
+               x0=0.0, clamp=(-trans_z_max, trans_z_max))
 
     with torch.no_grad():
-        betas = torch.randn(1, flame.num_betas, device=device) * betas_scale
-        expr  = torch.randn(1, flame.num_expression_coeffs, device=device) * expr_base_scale
+        betas = (torch.empty(1, flame.num_betas, device=device)
+                    .uniform_(-betas_scale, betas_scale))  # 3DMM α ~ U(-3,3)
+        expr  = (torch.empty(1, flame.num_expression_coeffs, device=device)
+                    .uniform_(-betas_scale, betas_scale) * expr_base_scale)
 
         # optional per-coeff damping
         w = torch.ones(flame.num_expression_coeffs, device=device) * 0.7
@@ -103,12 +110,13 @@ def generate_landmark_3d_sequence(
                 if float(n) > expr_cap_norm:
                     expr *= (expr_cap_norm / (n + 1e-8))
 
-            jaw_deg   = ou_jaw.step() # jaw
-            yaw_deg   = ou_yaw.step() # head turn
-            pitch_deg = ou_pitch.step() # head look up/down
-            roll_deg  = ou_roll.step() # tilting
+            jaw_deg   = ou_jaw.step()
+            yaw_deg   = ou_yaw.step()
+            pitch_deg = ou_pitch.step()
+            roll_deg  = ou_roll.step()
 
-            jaw_pose = torch.tensor([[math.radians(jaw_deg), 0.0, 0.0]], dtype=torch.float32, device=device)
+            jaw_pose = torch.tensor([[math.radians(jaw_deg), 0.0, 0.0]],
+                                    dtype=torch.float32, device=device)
 
             pose_vec = torch.zeros(1, pose_dim, device=device)
             if pose_dim >= 6:
@@ -123,8 +131,15 @@ def generate_landmark_3d_sequence(
 
             verts = out.vertices[0].cpu().numpy()
 
+            # head rotation
             R_head = Rz(roll_deg) @ Ry(yaw_deg) @ Rx(pitch_deg)
-            verts_dyn = (R_head @ verts.T).T
+
+            tx = ou_tx.step()
+            ty = ou_ty.step()
+            tz = ou_tz.step()
+            T_head = np.array([tx, ty, tz], np.float32)
+
+            verts_dyn = (R_head @ verts.T).T + T_head[None, :]
 
             tri = flame.faces[lmk_face_idx]
             v0, v1, v2 = verts_dyn[tri[:,0]], verts_dyn[tri[:,1]], verts_dyn[tri[:,2]]
@@ -132,8 +147,9 @@ def generate_landmark_3d_sequence(
                     lmk_bary[:, [1]] * v1 +
                     lmk_bary[:, [2]] * v2).astype(np.float32)
             lm_seq.append(lm3d)
+    betas = betas.squeeze(0)
+    return np.stack(lm_seq, 0).astype(np.float32), betas
 
-    return np.stack(lm_seq, 0).astype(np.float32)
 
 # spherical coordinates to cartesian coordinates
 def sph_to_cart(az_deg, el_deg, dist):
@@ -145,14 +161,12 @@ def sph_to_cart(az_deg, el_deg, dist):
 
 
 def sample_intrinsics(W, H):
-    fx_norm = np.random.uniform(0.35, 1.2)
-    fy_norm = fx_norm + np.random.uniform(-0.05, 0.05)
-
-    cx_norm = np.random.normal(0.5, 0.02)
-    cy_norm = np.random.normal(0.5, 0.02)
+    fx_norm = np.random.uniform(0.45, 0.9)
+    cx_norm = np.clip(np.random.normal(0.5, 0.01), 0.47, 0.53)
+    cy_norm = np.clip(np.random.normal(0.5, 0.01), 0.47, 0.53)
 
     fx = fx_norm * W
-    fy = fy_norm * H
+    fy = fx * np.random.uniform(0.98, 1.02)
     cx = cx_norm * W
     cy = cy_norm * H
 
@@ -172,77 +186,61 @@ def look_at_Rt_target(C, T, up=np.array([0,1,0], np.float32)):
     return R, t
 
 def project_onecam_video(
-    Xw_seq, W=1280, H=960, K=None,
-    base_az=10.0, base_el=-5.0, base_dist=0.9,
-    right_per_frame=0.02,   # meters along camera-right each frame
-    up_per_frame=0.00,      # meters along camera-up each frame
-    roll_per_frame_deg=0.0
+    Xw_seq, W=1280, H=960,
+    az_deg=10.0, el_deg=-5.0, dist=0.9,
+    flip_y: bool = True
 ):
-    """
-    Moves the camera laterally (strafe) on a sphere of constant radius around the origin.
-    That keeps distance constant -> no zooming/size drift.
-    """
     F, N, _ = Xw_seq.shape
-    if K is None:
-        K = sample_intrinsics(W, H)
+    K = sample_intrinsics(W, H)
 
-    # start on the viewing sphere
-    C = sph_to_cart(base_az, base_el, base_dist).astype(np.float32)
+    C = sph_to_cart(az_deg, el_deg, dist).astype(np.float32)
     T = np.zeros(3, np.float32)
+
+    R, t = look_at_Rt_target(C, T)
 
     all_uv = []
     for f in range(F):
-        # Look-at to get camera axes in world coords
-        R, t = look_at_Rt_target(C, T)
-        if roll_per_frame_deg != 0.0:
-            R = Rz(f * roll_per_frame_deg) @ R
+        Xw = Xw_seq[f] 
 
-        # R rows are [x_world; y_world; z_world]
-        x_world = R[0]  # camera right in world coords
-        y_world = R[1]  # camera up in world coords
-
-        # Strafe in tangent plane (no radial component)
-        C = C + right_per_frame * x_world + up_per_frame * y_world
-
-        # Re-project back to the sphere to keep constant distance
-        C = (base_dist / (np.linalg.norm(C) + 1e-8)) * C
-
-        # Recompute extrinsics after moving C
-        R, t = look_at_Rt_target(C, T)
-        if roll_per_frame_deg != 0.0:
-            R = Rz(f * roll_per_frame_deg) @ R
-
-        # Project
-        Xw = Xw_seq[f]
         Xc = (R @ Xw.T).T + t
-        Z  = Xc[:, 2:3].copy(); Z[Z < 1e-6] = 1e-6
+        Z  = Xc[:, 2:3].copy()
+        Z[Z < 1e-6] = 1e-6
+
         u = K[0,0]*(Xc[:,0:1]/Z) + K[0,2]
         v = K[1,1]*(Xc[:,1:2]/Z) + K[1,2]
-        all_uv.append(np.concatenate([u, v], 1).astype(np.float32))
 
-    return torch.from_numpy(np.stack(all_uv, 0)).to(device), K
+        if flip_y:
+            v_img = H - v
+        else:
+            v_img = v
+
+        u_img = u
+
+        all_uv.append(np.concatenate([u_img, v_img], 1).astype(np.float32))
+
+    pts_2d = torch.from_numpy(np.stack(all_uv, 0)).to(device)  # (F,N,2)
+    return pts_2d, K
 if __name__ == "__main__":
     x, y = [], []
     ws, hs = [], []
-
+    betas_list = []
     resolutions = [
-        # (1280, 960),
-        # (1920, 1080),
-        # (2560, 1440),
+        (640, 480),
+        (1920, 1080),
         (3840, 2160)
     ]
 
-    NUM_SAMPLES = 1
-    FRAMES_PER_SAMPLE = 120
-
+    NUM_SAMPLES = int(input("Number of sample (each resolution): "))
+    FRAMES_PER_SAMPLE = int(input("Frame per sample: "))
+    filename = input("Dataset name: ")
     for (W, H) in resolutions:
         for _ in range(NUM_SAMPLES):
-
+            dist = np.random.uniform(1.5, 2.5)
             # ---- 3D landmarks ----
-            lm3d = generate_landmark_3d_sequence(FRAMES_PER_SAMPLE)
+            lm3d, beta = generate_landmark_3d_sequence(FRAMES_PER_SAMPLE)
 
             # ---- project to chosen resolution ----
-            pts_2ds, K = project_onecam_video(lm3d, W, H)
+            pts_2ds, K = project_onecam_video(lm3d, W=W, H=H, dist = dist)
             pts_2ds = pts_2ds.cpu().numpy()   # (F,68,2)
 
             fx, fy = K[0,0], K[1,1]
@@ -265,45 +263,22 @@ if __name__ == "__main__":
             y.append(y_norm)
             ws.append(W)
             hs.append(H)
+            betas_list.append(beta.cpu().numpy().astype(np.float32))
 
     x = torch.tensor(np.array(x, dtype=np.float32))     # (N,F,68,2)
     y = torch.tensor(np.array(y, dtype=np.float32))     # (N,4)
     ws = torch.tensor(ws)
     hs = torch.tensor(hs)
-
+    betas = torch.tensor(np.stack(betas_list, axis=0), dtype=torch.float32)
+    
     os.makedirs("dataset", exist_ok=True)
     torch.save({
         "x": x,
         "y": y,
         "W": ws,
         "H": hs,
-    }, "dataset/synthetic_face_dataset_test.pt")
+        "Beta": betas,
+    }, "dataset/"+ filename + ".pt")
 
 
-    # colors = ["red", "green", "blue", "orange"]
-    # plt.figure(figsize=(12.8, 9.6), dpi=100)  # Optional: match image resolution
-    # for i, pts in enumerate(pts_2ds):
-    #     plt.scatter(pts[:, 0], pts[:, 1], s=25, color=colors[i], label=f"Cam {i}")
 
-    # plt.xlim(0, 1280)  # Fix x-axis to image width
-    # plt.ylim(0, 960)   # Fix y-axis to image height (invert to match image coordinates)
-
-    # plt.legend()
-    # plt.gca().set_aspect("equal")
-    # plt.xlabel("u")
-    # plt.ylabel("v")
-    # plt.title("All cameras overlaid")
-    # plt.tight_layout()
-    # plt.show()
-
-    # for pts_2d in pts_2ds:
-    #     plt.clf()  # clear previous frame
-    #     plt.scatter(pts_2d[:, 0], pts_2d[:, 1], s=30)
-    #     plt.gca().set_aspect('equal', adjustable='box')
-    #     plt.xlim(0, 1280)
-    #     plt.ylim(0, 960)
-    #     plt.xlabel("u")
-    #     plt.ylabel("v")
-    #     plt.tight_layout()
-    #     plt.pause(1.0/30)  # <-- show frame for ~100 ms
-    #plt.close()
