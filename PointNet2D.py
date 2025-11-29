@@ -111,7 +111,6 @@ class PointNetfeat(nn.Module):
             return x, trans, trans_feat
         else:
             x = x.view(-1, 1024, 1).repeat(1, 1, n_pts)
-            #return x, trans, trans_feat
             return torch.cat([x, pointfeat], 1), trans, trans_feat
 
 class PointNet(nn.Module):
@@ -123,15 +122,10 @@ class PointNet(nn.Module):
         self.fc1 = nn.Linear(1024, 512)
         self.fc2 = nn.Linear(512, 256)
         self.fc3 = nn.Linear(256, n)
-        #self.bn1 = nn.BatchNorm1d(512)
-        #self.bn2 = nn.BatchNorm1d(256)
-        #self.dropout = nn.Dropout(p=0.3)
         self.relu = nn.ReLU()
     
     def forward(self, x):
         x, trans, trans_feat = self.feat(x)
-        #x = F.relu(self.bn1(self.fc1(x)))
-        #x = F.relu(self.bn2(self.fc2(x)))
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)

@@ -1,14 +1,11 @@
 from model import Model
 import torch
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-def eval():
-    dataset = torch.load("dataset/test1.pt", weights_only=False)
+def eval(dataset_path: str, model_name: str, checkpoint:str):
+    dataset = torch.load(dataset_path, weights_only=False)
     center = torch.tensor([1600/2,896/2,1])
     model = Model(center,gt=None)
-    model.load("1600_lowrange", "04_")
-    model.shape_opt = torch.optim.Adam(model.shape_net.parameters(),lr=1e-3)
-    model.calib_opt = torch.optim.Adam(model.calib_net.parameters(),lr=5e-5)
-    print(1e-3, 5e-5)
+    model.load(model_name, checkpoint)
     model.set_eval()
     model.to_device(device)
     total = 0
@@ -23,7 +20,7 @@ def eval():
         x_img = sample['x_img'].to(device)
         x_img_true = sample['x_img_gt'].to(device)
         # _, K_pred, _, _ = model.alternating_optimize(x_img, max_iter=7)
-        # model.load("1600_lowrange", "04_")
+        # model.load(model_name, checkpoint)
         K_pred = model.predict_intrinsic(x_img)
         K_pred = K_pred.mean(0)
         error = torch.abs(K_pred - K)/K
@@ -45,4 +42,7 @@ def eval():
             efx, efy, ecx, ecy = 0.0, 0.0, 0.0, 0.0
     print(f"Total efx: {efx_total/total} | efy: {efy_total/total:.5f} | ecx: {ecx_total/total:.5f} | ecy: {ecy_total/total:.5f}")
 if __name__ == '__main__':
-    eval()
+    dataset_path = input("Dataset path: ")
+    model_name = input("Model name: ")
+    checkpoint = int(input("Checkpoint: "))
+    eval(dataset_path, model_name, f"{checkpoint:02d}_")

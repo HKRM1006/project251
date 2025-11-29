@@ -102,17 +102,6 @@ def predict_intrinsic(video_path: str, model_name: str, token: str , device: str
     F, N, _ = pts.shape
     device = torch.device(device)
     pts = pts.to(device, dtype=torch.float32)
-    
-    pt = pts.reshape(F*N,2)
-    plt.clf()  # clear previous frame
-    plt.scatter(pt[:, 0], pt[:, 1], s=30)
-    plt.gca().set_aspect('equal', adjustable='box')
-    plt.xlim(0, W)
-    plt.ylim(0, H)
-    plt.xlabel("u")
-    plt.ylabel("v")
-    plt.tight_layout()
-    plt.show()
 
     pts = pts.reshape(F,2,N)
     W_t = torch.tensor(float(W), dtype=pts.dtype, device=device)
@@ -242,10 +231,13 @@ def render_video_with_landmarks(
 
 if __name__ == "__main__":
     start_time = time.perf_counter()
+    video_path = input("Video path: ")
+    model_name = input("Model name: ")
+    checkpoint = int(input("Checkpoint: "))
     result, W, H = predict_intrinsic(
-                video_path="Data/Sample/2025-11-25 14-53-04 cam2.mp4",
-                model_name="1600_lowrange",
-                token="05_"
+                video_path=video_path,
+                model_name=model_name,
+                token=f"{checkpoint:02d}_"
             )
     end_time = time.perf_counter()
     elapsed_time = end_time - start_time

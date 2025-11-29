@@ -14,7 +14,7 @@ def compute_reprojection_loss(x,S,A):
     loss = torch.norm(diff,dim=2).mean()
     return loss
 
-def train():
+def train(model_name:str):
     loader = dataloader.SyntheticLoader()
     center = torch.tensor([loader.w/2,loader.h/2,1])
     model = Model(center,gt=None)
@@ -62,7 +62,8 @@ def train():
                 f"| S_err: {s_loss.item()*acc_steps:.3f}"
             )
 
-        model.save("1600_lowrange", f"{epoch+1:02d}_")
+        model.save(model_name, f"{epoch:02d}_")
 
 if __name__ == '__main__':
-    train()
+    name = input("Model name: ")
+    train(name)

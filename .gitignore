@@ -9,8 +9,10 @@ env/
 venv/
 
 # Dataset and model files
-Models/*pkl
+Models/*.pkl
+Models/*.dat
 Models/*/*.pt
+!Models/pretrain/*.pt
 dataset/*
 Data/*
 # VS Code settings (optional)
