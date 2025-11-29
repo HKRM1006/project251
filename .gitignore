@@ -1,0 +1,32 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual environment
+.venv/
+env/
+venv/
+
+# Dataset and model files
+Models/*pkl
+Models/*/*.pt
+dataset/*
+Data/*
+# VS Code settings (optional)
+.vscode/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Python environment files
+*.egg-info/
+*.log
+
+# PyTorch Lightning or training logs (if used)
+lightning_logs/
+
+# Test file
+test.py
+*.json
