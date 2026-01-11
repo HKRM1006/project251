@@ -7,14 +7,14 @@ __pycache__/
 .venv/
 env/
 venv/
-
+*.png
 # Dataset and model files
 Models/*.pkl
 Models/*.dat
 Models/*/*.pt
+*.pt
 !Models/pretrain/*.pt
-dataset/*
-Data/*
+Data/
 # VS Code settings (optional)
 .vscode/
 

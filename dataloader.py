@@ -99,7 +99,7 @@ class SyntheticLoader(Dataset):
 
         offsets = torch.einsum('vcn,bn->bvc', shapedirs, betas)
         vertices = mu_s.unsqueeze(0) + offsets
-        vertices = vertices - vertices.mean(dim=1, keepdim=True)
+        #vertices = vertices - vertices.mean(dim=1, keepdim=True)
 
         face_idx = torch.from_numpy(lmk_face_idx).long().to(device)
         bary_coords = torch.from_numpy(lmk_bary).to(device, dtype=dtype)
@@ -121,7 +121,7 @@ class SyntheticLoader(Dataset):
         shapedirs_flat = torch.from_numpy(self.lm_eigenvec[:, :, :n_shape].reshape(n_verts*3, n_shape)).to(device)
         mu_s = torch.from_numpy(self.mu_lm.reshape(n_verts*3)).to(device)
         sigma_vec = torch.ones(n_shape, device=device)
-        alphas = (torch.rand(n_shape, device=device) * 2 - 1) * 3.0
+        alphas = (torch.rand(n_shape, device=device) * 2 - 1) * 2.0
         coeffs = sigma_vec * alphas
         delta = shapedirs_flat @ coeffs
         vertices = (mu_s + delta).reshape(n_verts, 3)
@@ -186,7 +186,7 @@ class SyntheticLoader(Dataset):
 
         proj = proj.transpose(0, 2, 1)
         x_img_true = proj[:, :, :2] / proj[:,:,2:]
-        x_img = x_img_true + np.random.randn(M, N, 2)
+        x_img = x_img_true + 0.5*np.random.randn(M, N, 2)
 
         sample = {}
         sample['alpha_gt'] = alpha
@@ -195,7 +195,7 @@ class SyntheticLoader(Dataset):
         sample['x_img'] = torch.from_numpy(x_img).float().permute(0,2,1)
         sample['x_img_gt'] = torch.from_numpy(x_img_true).float().permute(0,2,1)
         sample['K_gt'] = K_norm
-        sample['T_gt'] = T
+        sample['T_gt'] = torch.from_numpy(T).float()
         sample['R_gt'] = torch.from_numpy(matrices).float()
         sample['f_gt'] = torch.Tensor(K[0][0])
         return sample
@@ -297,7 +297,7 @@ def main():
         low_fx = f_pix
         high_fx = f_pix + 100
 
-        for i in range(20):
+        for i in range(10):
             # deterministic seed per (f_pix, i)
             seed = (f_pix * 1000003) ^ (i * 9176)
 
