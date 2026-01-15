@@ -121,7 +121,7 @@ class SyntheticLoader(Dataset):
         shapedirs_flat = torch.from_numpy(self.lm_eigenvec[:, :, :n_shape].reshape(n_verts*3, n_shape)).to(device)
         mu_s = torch.from_numpy(self.mu_lm.reshape(n_verts*3)).to(device)
         sigma_vec = torch.ones(n_shape, device=device)
-        alphas = (torch.rand(n_shape, device=device) * 2 - 1) * 2.0
+        alphas = (torch.rand(n_shape, device=device) * 2 - 1) * 3.0
         coeffs = sigma_vec * alphas
         delta = shapedirs_flat @ coeffs
         vertices = (mu_s + delta).reshape(n_verts, 3)

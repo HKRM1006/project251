@@ -53,89 +53,67 @@ class Model():
         k = self.calib_net(frames)
         return utils.create_K(k)
     
-    def shape_optimize(self, frames, K, R, T, max_iter=5):
-        """
-        Now R, T are inputs (computed once before optimization)
-        """
+    def shape_optimize(self, frames, K, max_iter=5):
         for i in range(max_iter):
             self.shape_opt.zero_grad()
 
             S = self.get_shape(frames)
-            
-            # Use fixed R, T - no PnP needed!
-            error2d = torch.log(losses.projection_loss(frames, S, R, T, K).mean())
-            error_p = losses.principal_loss(K, self.center.unsqueeze(0)).mean()
+            Xc, R, T = utils.PnP(frames.permute(0,2,1),S,K)
+            error2d = torch.log(losses.projection_loss(frames,S,R,T,K).mean())
+            error_p = losses.principal_loss(K,self.center.unsqueeze(0)).mean()
 
             loss = error2d
             loss.backward()
             self.shape_opt.step()
 
-            # ... logging ...
             fx = torch.mean(K[:,0,0])
             fy = torch.mean(K[:,1,1])
             px = torch.mean(K[:,0,2])
             py = torch.mean(K[:,1,2])
             pred = {'iter': i, 'error': loss, 'e_pr': error_p,'fx': fx, 'fy': fy,
-                    'e2d': error2d,'px': px, 'py': py, 'K': K}
+                    'e2d': error2d,'px': px, 'py': py}
 
         pred['S'] = S.detach()
         return pred
-
-    def calib_optimize(self, frames, S, R, T, max_iter=5):
-        """
-        Now R, T are inputs (computed once before optimization)
-        """
+    
+    def calib_optimize(self,frames,S,max_iter=5):
         b = frames.shape[0]
         for i in range(max_iter):
             self.calib_opt.zero_grad()
-            K = self.predict_intrinsic(frames).mean(0).repeat(b, 1, 1)
-            
-            # Use fixed R, T - no PnP needed!
-            error2d = torch.log(losses.projection_loss(frames, S, R, T, K).mean())
-            error_p = losses.principal_loss(K, self.center.unsqueeze(0)).mean()
+            K = self.predict_intrinsic(frames).mean(0).repeat(b,1,1)
+            Xc, R, T = utils.PnP(frames.permute(0,2,1),S,K)
+            error2d = torch.log(losses.projection_loss(frames,S,R,T,K).mean())
+            error_p = losses.principal_loss(K,self.center.unsqueeze(0)).mean()
 
-            loss = error2d + error_p * 1e-2
+
+            loss = error2d + error_p*1e-2
             loss.backward()
             self.calib_opt.step()
 
-            # ... logging ...
             fx = torch.mean(K[:,0,0])
             fy = torch.mean(K[:,1,1])
             px = torch.mean(K[:,0,2])
             py = torch.mean(K[:,1,2])
             pred = {'iter': i, 'error': loss, 'e_pr': error_p,'fx': fx, 'fy': fy,
-                    'e2d': error2d,'px': px, 'py': py, 'S': S}
+                    'e2d': error2d,'px': px, 'py': py}
+
 
         pred['K'] = K.detach()
         return pred
-
+    
     def alternating_optimize(self, x, max_iter=5):
         b = x.shape[0]
         K = self.predict_intrinsic(x).detach()
         S = self.get_shape(x).detach()
-        
-        # Initialize R, T once with PnP
-        _, R, T = utils.PnP(x.permute(0, 2, 1), S, K)
-        R, T = R.detach(), T.detach()
-        
         pred = {'S': S, 'K': K}
 
-        for outer_iter in range(max_iter):
-            # Update K with fixed S, R, T
-            pred = self.calib_optimize(x, pred['S'].mean(0).unsqueeze(0).repeat(b, 1, 1), R, T, max_iter=5)
-            # Update S with fixed K, R, T  
-            pred = self.shape_optimize(x, pred['K'].mean(0).unsqueeze(0).repeat(b, 1, 1), R, T, max_iter=5)
-            # Re-estimate R, T with updated S and K
-            _, R, T = utils.PnP(x.permute(0, 2, 1), 
-                            pred['S'].mean(0).unsqueeze(0).repeat(b, 1, 1),
-                            pred['K'].mean(0).unsqueeze(0).repeat(b, 1, 1))
-            R, T = R.detach(), T.detach()
+        for _ in range(max_iter):
+            pred = self.calib_optimize(x, pred['S'].mean(0).unsqueeze(0).repeat(b,1,1),max_iter=7)
+            pred = self.shape_optimize(x, pred['K'].mean(0).unsqueeze(0).repeat(b,1,1),max_iter=7)
 
-        # Final values
-        S = self.get_shape(x).mean(0).unsqueeze(0).repeat(b, 1, 1)
-        K = self.predict_intrinsic(x).mean(0).unsqueeze(0).repeat(b, 1, 1)
-        _, R, T = utils.PnP(x.permute(0, 2, 1), S, K)
-        
+        S = self.get_shape(x).mean(0).unsqueeze(0).repeat(b,1,1)
+        K = self.predict_intrinsic(x).mean(0).unsqueeze(0).repeat(b,1,1)
+        _, R, T = utils.PnP(x.permute(0,2,1),S,K)
         return S, K, R, T
     
     def save(self, dir: str = "", token = ""):
@@ -148,6 +126,6 @@ class Model():
         path = os.path.join("Models", dir)
         self.calib_net.load_state_dict(torch.load(os.path.join(path, token + "calib_net.pt"), weights_only=True))
         self.shape_net.load_state_dict(torch.load(os.path.join(path, token + "shape_net.pt"), weights_only=True))
-        self.shape_opt = torch.optim.Adam(self.shape_net.parameters(),lr=1e-4)
-        self.calib_opt = torch.optim.Adam(self.calib_net.parameters(),lr=1e-4)
+        self.shape_opt = torch.optim.Adam(self.shape_net.parameters(),lr=1e-5)
+        self.calib_opt = torch.optim.Adam(self.calib_net.parameters(),lr=1e-5)
 

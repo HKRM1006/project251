@@ -24,7 +24,7 @@ class Trainer:
         model = Model(self.center, gt=None)
         model.to_device(self.device)
         model.shape_opt = torch.optim.Adam(model.shape_net.parameters(), lr=1e-4)
-        model.calib_opt = torch.optim.Adam(model.calib_net.parameters(), lr=1e-4)
+        model.calib_opt = torch.optim.Adam(model.calib_net.parameters(), lr=1e-5)
         model.shape_opt.zero_grad()
         model.calib_opt.zero_grad()
 
